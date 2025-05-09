@@ -89,6 +89,7 @@ with st.sidebar:
                 "", "", comments, ""
             ]
             append_row(inventory_sheet, new_row)
+            inventory = load_sheet(inventory_sheet, inventory_headers)
             append_row(audit_sheet, [str(datetime.datetime.now()), user, "Add Item", item_id, f"{qty_total} added as {item_type}"])
             st.success("Item added and logged to Google Sheet!")
 
@@ -117,6 +118,7 @@ with st.sidebar.form("checkout_form"):
             inventory_sheet.update(f"L{row_idx}", [[str(date_now)]])
             inventory_sheet.update(f"R{row_idx}", [[""]])  # clear checkout location
         append_row(audit_sheet, [str(datetime.datetime.now()), user, action, item_id, f"{comment} → {checkout_location}"])
+        inventory = load_sheet(inventory_sheet, inventory_headers)
         st.success(f"{action} successful for item {item_id}")
 
 # Display inventory
