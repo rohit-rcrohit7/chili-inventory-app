@@ -6,7 +6,7 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import json
 
-st.set_page_config(page_title="CHILI Inventory Manager", layout="wide")
+st.set_page_config(page_title="CHILI Inventory Manager (Google Sheets)", layout="wide")
 st.title("📦 CHILI Inventory Management Dashboard")
 
 # Authorize with Google Sheets using Streamlit secrets
@@ -111,11 +111,11 @@ with st.sidebar.form("checkout_form"):
             inventory_sheet.update(f"I{row_idx}", [[user]])
             inventory_sheet.update(f"J{row_idx}", [[str(date_now)]])
             inventory_sheet.update(f"K{row_idx}", [[str(expected_return)]])
-            inventory_sheet.update(f"S{row_idx}", [[checkout_location]])
+            inventory_sheet.update(f"R{row_idx}", [[checkout_location]])
         else:
             inventory_sheet.update(f"G{row_idx}", [["In Stock"]])
             inventory_sheet.update(f"L{row_idx}", [[str(date_now)]])
-            inventory_sheet.update(f"S{row_idx}", [[""]])  # clear checkout location
+            inventory_sheet.update(f"R{row_idx}", [[""]])  # clear checkout location
         append_row(audit_sheet, [str(datetime.datetime.now()), user, action, item_id, f"{comment} → {checkout_location}"])
         st.success(f"{action} successful for item {item_id}")
 
