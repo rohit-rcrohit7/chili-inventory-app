@@ -1,37 +1,37 @@
+# Recreate Streamlit Google Sheets version after reset
 
+google_sheets_streamlit_code = """
 import streamlit as st
 import pandas as pd
 import datetime
-import os
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
+import json
 
-st.set_page_config(page_title="CHILI Inventory Manager", layout="wide")
+st.set_page_config(page_title="CHILI Inventory Manager (Google Sheets)", layout="wide")
 st.title("📦 CHILI Inventory Management Dashboard")
 
-DATA_PATH = "chili_inventory.csv"
-AUDIT_LOG_PATH = "chili_inventory_audit_log.csv"
+# Define scope and authorize with Google Sheets
+scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+credentials = ServiceAccountCredentials.from_json_keyfile_dict(
+    dict(st.secrets["gcp_service_account"]), scope)
+client = gspread.authorize(credentials)
 
-# Load inventory and audit log
-def load_data():
-    if os.path.exists(DATA_PATH):
-        inventory_df = pd.read_csv(DATA_PATH, parse_dates=["Date Added", "Checked Out Date", "Expected Return Date", "Actual Return Date", "Last Verified Date"])
-    else:
-        inventory_df = pd.DataFrame(columns=[
-            "Item Type", "Item ID", "Item Description", "Serial Number", "Quantity Available",
-            "Total Quantity", "Status", "Date Added", "Checked Out By", "Checked Out Date",
-            "Expected Return Date", "Actual Return Date", "Location (Current)", "Condition Notes",
-            "Last Verified By", "Last Verified Date", "Comments/Notes"
-        ])
-    if os.path.exists(AUDIT_LOG_PATH):
-        audit_df = pd.read_csv(AUDIT_LOG_PATH, parse_dates=["Timestamp"])
-    else:
-        audit_df = pd.DataFrame(columns=["Timestamp", "User", "Action", "Item ID", "Details"])
-    return inventory_df, audit_df
+# Open the Google Sheets
+inventory_sheet = client.open("CHILI Inventory").worksheet("Inventory")
+audit_sheet = client.open("CHILI Inventory").worksheet("Audit Log")
 
-def save_data(inventory_df, audit_df):
-    inventory_df.to_csv(DATA_PATH, index=False)
-    audit_df.to_csv(AUDIT_LOG_PATH, index=False)
+# Helper: Load sheet to DataFrame
+def load_sheet(sheet):
+    data = sheet.get_all_records()
+    return pd.DataFrame(data)
 
-inventory, audit_log = load_data()
+# Helper: Append row to sheet
+def append_row(sheet, row_list):
+    sheet.append_row(row_list)
+
+inventory = load_sheet(inventory_sheet)
+audit_log = load_sheet(audit_sheet)
 
 # Sidebar for adding new item
 with st.sidebar:
@@ -53,21 +53,14 @@ with st.sidebar:
         condition = st.text_area("Condition Notes")
         submitted = st.form_submit_button("Add Item")
         if submitted and user:
-            new_row = pd.DataFrame([{
-                "Item Type": item_type, "Item ID": item_id, "Item Description": description,
-                "Serial Number": serial, "Quantity Available": qty_available,
-                "Total Quantity": qty_total, "Status": status, "Date Added": pd.to_datetime(date_added),
-                "Checked Out By": "", "Checked Out Date": pd.NaT, "Expected Return Date": pd.NaT,
-                "Actual Return Date": pd.NaT, "Location (Current)": location, "Condition Notes": condition,
-                "Last Verified By": "", "Last Verified Date": pd.NaT, "Comments/Notes": ""
-            }])
-            inventory = pd.concat([inventory, new_row], ignore_index=True)
-            audit_log = pd.concat([audit_log, pd.DataFrame([{
-                "Timestamp": datetime.datetime.now(), "User": user, "Action": "Add Item",
-                "Item ID": item_id, "Details": f"{qty_total} added as {item_type}"
-            }])], ignore_index=True)
-            save_data(inventory, audit_log)
-            st.success("Item added and logged successfully!")
+            new_row = [
+                item_type, item_id, description, serial, qty_available, qty_total,
+                status, str(date_added), "", "", "", "", location, condition,
+                "", "", ""
+            ]
+            append_row(inventory_sheet, new_row)
+            append_row(audit_sheet, [str(datetime.datetime.now()), user, "Add Item", item_id, f"{qty_total} added as {item_type}"])
+            st.success("Item added and logged to Google Sheet!")
 
 # Check-in / Check-out
 st.sidebar.header("🔄 Check In/Out")
@@ -80,23 +73,19 @@ with st.sidebar.form("checkout_form"):
     expected_return = st.date_input("Expected Return Date (for Check Out)", date_now)
     submitted_io = st.form_submit_button("Submit")
     if submitted_io and user:
-        idx = inventory[inventory["Item ID"] == item_id].index[0]
+        row_idx = inventory.index[inventory["Item ID"] == item_id][0] + 2  # offset for 1-based + header
         if action == "Check Out":
-            inventory.at[idx, "Status"] = "Checked Out"
-            inventory.at[idx, "Checked Out By"] = user
-            inventory.at[idx, "Checked Out Date"] = pd.to_datetime(date_now)
-            inventory.at[idx, "Expected Return Date"] = pd.to_datetime(expected_return)
+            inventory_sheet.update(f"G{row_idx}", "Checked Out")
+            inventory_sheet.update(f"I{row_idx}", user)
+            inventory_sheet.update(f"J{row_idx}", str(date_now))
+            inventory_sheet.update(f"K{row_idx}", str(expected_return))
         else:
-            inventory.at[idx, "Status"] = "In Stock"
-            inventory.at[idx, "Actual Return Date"] = pd.to_datetime(date_now)
-        audit_log = pd.concat([audit_log, pd.DataFrame([{
-            "Timestamp": datetime.datetime.now(), "User": user, "Action": action,
-            "Item ID": item_id, "Details": comment
-        }])], ignore_index=True)
-        save_data(inventory, audit_log)
+            inventory_sheet.update(f"G{row_idx}", "In Stock")
+            inventory_sheet.update(f"L{row_idx}", str(date_now))
+        append_row(audit_sheet, [str(datetime.datetime.now()), user, action, item_id, comment])
         st.success(f"{action} successful for item {item_id}")
 
-# Inventory view
+# Display inventory
 st.subheader("📊 Inventory Summary Table")
 st.dataframe(inventory, use_container_width=True)
 
@@ -115,6 +104,14 @@ if filter_type != "All":
 st.download_button("📥 Download Inventory CSV", inventory.to_csv(index=False), "inventory.csv", "text/csv")
 st.download_button("📥 Download Audit Log CSV", audit_log.to_csv(index=False), "audit_log.csv", "text/csv")
 
-# Audit Log Viewer
+# Audit log view
 st.subheader("📒 Audit Log")
 st.dataframe(audit_log.sort_values("Timestamp", ascending=False), use_container_width=True)
+"""
+
+# Save to file
+gsheet_app_path = "/mnt/data/chili_inventory_google_sheets.py"
+with open(gsheet_app_path, "w") as f:
+    f.write(google_sheets_streamlit_code)
+
+gsheet_app_path
