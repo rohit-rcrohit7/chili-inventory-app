@@ -6,7 +6,7 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import json
 
-st.set_page_config(page_title="CHILI Inventory Manager (Google Sheets)", layout="wide")
+st.set_page_config(page_title="CHILI Inventory Manager", layout="wide")
 st.title("📦 CHILI Inventory Management Dashboard")
 
 # Authorize with Google Sheets using Streamlit secrets
@@ -31,7 +31,7 @@ def ensure_worksheet(title, headers, rows=100, cols=25):
         ws.insert_row(headers, index=1)
     return ws
 
-# Define expected headers
+# Define expected headers (all 18)
 inventory_headers = [
     "Item Type", "Item ID", "Item Description", "Serial Number", "Quantity Available",
     "Total Quantity", "Status", "Date Added", "Checked Out By", "Checked Out Date",
@@ -48,9 +48,11 @@ audit_sheet = ensure_worksheet("Audit Log", audit_headers)
 def load_sheet(sheet, headers):
     try:
         records = sheet.get_all_records()
-        if not records:
-            return pd.DataFrame(columns=headers)
-        return pd.DataFrame(records)
+        df = pd.DataFrame(records)
+        for col in headers:
+            if col not in df.columns:
+                df[col] = ""
+        return df[headers]
     except:
         return pd.DataFrame(columns=headers)
 
@@ -78,12 +80,13 @@ with st.sidebar:
         date_added = st.date_input("Date Added", datetime.date.today())
         location = st.text_input("Current Location")
         condition = st.text_area("Condition Notes")
+        comments = st.text_area("Comments/Notes")
         submitted = st.form_submit_button("Add Item")
         if submitted and user:
             new_row = [
                 item_type, item_id, description, serial, qty_available, qty_total,
                 status, str(date_added), "", "", "", "", location, condition,
-                "", "", "", ""
+                "", "", comments, ""
             ]
             append_row(inventory_sheet, new_row)
             append_row(audit_sheet, [str(datetime.datetime.now()), user, "Add Item", item_id, f"{qty_total} added as {item_type}"])
