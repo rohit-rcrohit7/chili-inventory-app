@@ -1,3 +1,4 @@
+
 import streamlit as st
 import pandas as pd
 import datetime
@@ -18,7 +19,7 @@ client = gspread.authorize(credentials)
 spreadsheet = client.open("CHILI Inventory")
 
 # Ensure worksheet with headers
-def ensure_worksheet(title, headers, rows=100, cols=20):
+def ensure_worksheet(title, headers, rows=100, cols=25):
     try:
         ws = spreadsheet.worksheet(title)
         existing_headers = ws.row_values(1)
@@ -35,7 +36,7 @@ inventory_headers = [
     "Item Type", "Item ID", "Item Description", "Serial Number", "Quantity Available",
     "Total Quantity", "Status", "Date Added", "Checked Out By", "Checked Out Date",
     "Expected Return Date", "Actual Return Date", "Location (Current)", "Condition Notes",
-    "Last Verified By", "Last Verified Date", "Comments/Notes"
+    "Last Verified By", "Last Verified Date", "Comments/Notes", "Checked Out Location"
 ]
 audit_headers = ["Timestamp", "User", "Action", "Item ID", "Details"]
 
@@ -82,7 +83,7 @@ with st.sidebar:
             new_row = [
                 item_type, item_id, description, serial, qty_available, qty_total,
                 status, str(date_added), "", "", "", "", location, condition,
-                "", "", ""
+                "", "", "", ""
             ]
             append_row(inventory_sheet, new_row)
             append_row(audit_sheet, [str(datetime.datetime.now()), user, "Add Item", item_id, f"{qty_total} added as {item_type}"])
@@ -92,30 +93,33 @@ with st.sidebar:
 st.sidebar.header("🔄 Check In/Out")
 with st.sidebar.form("checkout_form"):
     user = st.text_input("Your Name (Check In/Out)")
-    item_ids = inventory["Item ID"].dropna().unique().tolist()
+    item_ids = inventory["Item ID"].dropna().astype(str).unique().tolist()
     item_id = st.selectbox("Select Item ID", item_ids if item_ids else ["No items available"])
+    checkout_location = st.text_input("Checked Out To (Location / Site)")
     action = st.radio("Action", ["Check Out", "Check In"])
     comment = st.text_input("Notes")
     date_now = datetime.date.today()
     expected_return = st.date_input("Expected Return Date (for Check Out)", date_now)
     submitted_io = st.form_submit_button("Submit")
     if submitted_io and user and item_id != "No items available":
-        row_idx = inventory.index[inventory["Item ID"] == item_id][0] + 2
+        row_idx = inventory.index[inventory["Item ID"].astype(str) == item_id][0] + 2
         if action == "Check Out":
-            inventory_sheet.update(f"G{row_idx}", "Checked Out")
-            inventory_sheet.update(f"I{row_idx}", user)
-            inventory_sheet.update(f"J{row_idx}", str(date_now))
-            inventory_sheet.update(f"K{row_idx}", str(expected_return))
+            inventory_sheet.update(f"G{row_idx}", [["Checked Out"]])
+            inventory_sheet.update(f"I{row_idx}", [[user]])
+            inventory_sheet.update(f"J{row_idx}", [[str(date_now)]])
+            inventory_sheet.update(f"K{row_idx}", [[str(expected_return)]])
+            inventory_sheet.update(f"S{row_idx}", [[checkout_location]])
         else:
-            inventory_sheet.update(f"G{row_idx}", "In Stock")
-            inventory_sheet.update(f"L{row_idx}", str(date_now))
-        append_row(audit_sheet, [str(datetime.datetime.now()), user, action, item_id, comment])
+            inventory_sheet.update(f"G{row_idx}", [["In Stock"]])
+            inventory_sheet.update(f"L{row_idx}", [[str(date_now)]])
+            inventory_sheet.update(f"S{row_idx}", [[""]])  # clear checkout location
+        append_row(audit_sheet, [str(datetime.datetime.now()), user, action, item_id, f"{comment} → {checkout_location}"])
         st.success(f"{action} successful for item {item_id}")
 
-# Main inventory table
+# Display inventory
 st.subheader("📊 Inventory Summary Table")
 if not inventory.empty:
-    st.dataframe(inventory, use_container_width=True)
+    st.dataframe(inventory.astype(str), use_container_width=True)
 else:
     st.info("No inventory data yet.")
 
@@ -131,7 +135,7 @@ st.subheader("🔍 Filter by Item Type")
 if not inventory.empty:
     filter_type = st.selectbox("Filter Type", ["All"] + inventory["Item Type"].dropna().unique().tolist())
     if filter_type != "All":
-        st.dataframe(inventory[inventory["Item Type"] == filter_type], use_container_width=True)
+        st.dataframe(inventory[inventory["Item Type"] == filter_type].astype(str), use_container_width=True)
 
 # Downloads
 st.download_button("📥 Download Inventory CSV", inventory.to_csv(index=False), "inventory.csv", "text/csv")
@@ -140,6 +144,6 @@ st.download_button("📥 Download Audit Log CSV", audit_log.to_csv(index=False),
 # Audit log display
 st.subheader("📒 Audit Log")
 if not audit_log.empty:
-    st.dataframe(audit_log.sort_values("Timestamp", ascending=False), use_container_width=True)
+    st.dataframe(audit_log.sort_values("Timestamp", ascending=False).astype(str), use_container_width=True)
 else:
     st.info("No audit entries yet.")
