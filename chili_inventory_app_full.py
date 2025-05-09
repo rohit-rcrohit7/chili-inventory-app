@@ -1,4 +1,6 @@
+# Update code to prevent errors if headers or data are missing in Google Sheets
 
+auto_safe_google_sheets_code = """
 import streamlit as st
 import pandas as pd
 import datetime
@@ -15,21 +17,50 @@ credentials = ServiceAccountCredentials.from_json_keyfile_dict(
     dict(st.secrets["gcp_service_account"]), scope)
 client = gspread.authorize(credentials)
 
-# Open the Google Sheets
-inventory_sheet = client.open("CHILI Inventory").worksheet("Inventory")
-audit_sheet = client.open("CHILI Inventory").worksheet("Audit Log")
+# Open or create the spreadsheet
+spreadsheet = client.open("CHILI Inventory")
 
-# Helper: Load sheet to DataFrame
-def load_sheet(sheet):
-    data = sheet.get_all_records()
-    return pd.DataFrame(data)
+# Helper: ensure worksheet with headers exists
+def ensure_worksheet(title, headers, rows=100, cols=20):
+    try:
+        ws = spreadsheet.worksheet(title)
+        existing_headers = ws.row_values(1)
+        if existing_headers != headers:
+            ws.delete_rows(1)
+            ws.insert_row(headers, index=1)
+    except gspread.exceptions.WorksheetNotFound:
+        ws = spreadsheet.add_worksheet(title=title, rows=rows, cols=cols)
+        ws.insert_row(headers, index=1)
+    return ws
 
-# Helper: Append row to sheet
+# Define headers
+inventory_headers = [
+    "Item Type", "Item ID", "Item Description", "Serial Number", "Quantity Available",
+    "Total Quantity", "Status", "Date Added", "Checked Out By", "Checked Out Date",
+    "Expected Return Date", "Actual Return Date", "Location (Current)", "Condition Notes",
+    "Last Verified By", "Last Verified Date", "Comments/Notes"
+]
+audit_headers = ["Timestamp", "User", "Action", "Item ID", "Details"]
+
+# Ensure both sheets exist with correct headers
+inventory_sheet = ensure_worksheet("Inventory", inventory_headers)
+audit_sheet = ensure_worksheet("Audit Log", audit_headers)
+
+# Load dataframes
+def load_sheet(sheet, headers):
+    try:
+        records = sheet.get_all_records()
+        if not records:
+            return pd.DataFrame(columns=headers)
+        return pd.DataFrame(records)
+    except:
+        return pd.DataFrame(columns=headers)
+
 def append_row(sheet, row_list):
     sheet.append_row(row_list)
 
-inventory = load_sheet(inventory_sheet)
-audit_log = load_sheet(audit_sheet)
+inventory = load_sheet(inventory_sheet, inventory_headers)
+audit_log = load_sheet(audit_sheet, audit_headers)
 
 # Sidebar for adding new item
 with st.sidebar:
@@ -64,14 +95,15 @@ with st.sidebar:
 st.sidebar.header("🔄 Check In/Out")
 with st.sidebar.form("checkout_form"):
     user = st.text_input("Your Name (Check In/Out)")
-    item_id = st.selectbox("Select Item ID", inventory["Item ID"].dropna().unique())
+    item_id_list = inventory["Item ID"].dropna().unique().tolist()
+    item_id = st.selectbox("Select Item ID", item_id_list if item_id_list else ["No items available"])
     action = st.radio("Action", ["Check Out", "Check In"])
     comment = st.text_input("Notes")
     date_now = datetime.date.today()
     expected_return = st.date_input("Expected Return Date (for Check Out)", date_now)
     submitted_io = st.form_submit_button("Submit")
-    if submitted_io and user:
-        row_idx = inventory.index[inventory["Item ID"] == item_id][0] + 2  # offset for 1-based + header
+    if submitted_io and user and item_id != "No items available":
+        row_idx = inventory.index[inventory["Item ID"] == item_id][0] + 2  # gspread rows start at 1 + header
         if action == "Check Out":
             inventory_sheet.update(f"G{row_idx}", "Checked Out")
             inventory_sheet.update(f"I{row_idx}", user)
@@ -85,18 +117,25 @@ with st.sidebar.form("checkout_form"):
 
 # Display inventory
 st.subheader("📊 Inventory Summary Table")
-st.dataframe(inventory, use_container_width=True)
+if not inventory.empty:
+    st.dataframe(inventory, use_container_width=True)
+else:
+    st.info("No inventory data yet.")
 
 # Chart
 st.subheader("📈 Inventory Status Overview")
-status_counts = inventory["Status"].value_counts()
-st.bar_chart(status_counts)
+if not inventory.empty:
+    status_counts = inventory["Status"].value_counts()
+    st.bar_chart(status_counts)
+else:
+    st.info("No inventory status data available yet.")
 
 # Filter
 st.subheader("🔍 Filter by Item Type")
-filter_type = st.selectbox("Filter Type", ["All"] + inventory["Item Type"].dropna().unique().tolist())
-if filter_type != "All":
-    st.dataframe(inventory[inventory["Item Type"] == filter_type], use_container_width=True)
+if not inventory.empty:
+    filter_type = st.selectbox("Filter Type", ["All"] + inventory["Item Type"].dropna().unique().tolist())
+    if filter_type != "All":
+        st.dataframe(inventory[inventory["Item Type"] == filter_type], use_container_width=True)
 
 # Download
 st.download_button("📥 Download Inventory CSV", inventory.to_csv(index=False), "inventory.csv", "text/csv")
@@ -104,4 +143,15 @@ st.download_button("📥 Download Audit Log CSV", audit_log.to_csv(index=False),
 
 # Audit log view
 st.subheader("📒 Audit Log")
-st.dataframe(audit_log.sort_values("Timestamp", ascending=False), use_container_width=True)
+if not audit_log.empty:
+    st.dataframe(audit_log.sort_values("Timestamp", ascending=False), use_container_width=True)
+else:
+    st.info("No audit log entries yet.")
+"""
+
+# Save to file
+safe_sheet_app_path = "/mnt/data/chili_inventory_google_sheets_safe.py"
+with open(safe_sheet_app_path, "w") as f:
+    f.write(auto_safe_google_sheets_code)
+
+safe_sheet_app_path
