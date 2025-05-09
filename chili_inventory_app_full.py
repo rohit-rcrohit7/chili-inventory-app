@@ -1,6 +1,4 @@
-# Recreate Streamlit Google Sheets version after reset
 
-google_sheets_streamlit_code = """
 import streamlit as st
 import pandas as pd
 import datetime
@@ -107,11 +105,3 @@ st.download_button("📥 Download Audit Log CSV", audit_log.to_csv(index=False),
 # Audit log view
 st.subheader("📒 Audit Log")
 st.dataframe(audit_log.sort_values("Timestamp", ascending=False), use_container_width=True)
-"""
-
-# Save to file
-gsheet_app_path = "/mnt/data/chili_inventory_google_sheets.py"
-with open(gsheet_app_path, "w") as f:
-    f.write(google_sheets_streamlit_code)
-
-gsheet_app_path
