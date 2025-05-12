@@ -31,7 +31,7 @@ def ensure_worksheet(title, headers, rows=100, cols=25):
         ws.insert_row(headers, index=1)
     return ws
 
-# Define expected headers (all 18)
+# Define expected headers
 inventory_headers = [
     "Item Type", "Item ID", "Item Description", "Serial Number", "Quantity Available",
     "Total Quantity", "Status", "Date Added", "Checked Out By", "Checked Out Date",
@@ -44,7 +44,6 @@ audit_headers = ["Timestamp", "User", "Action", "Item ID", "Details"]
 inventory_sheet = ensure_worksheet("Inventory", inventory_headers)
 audit_sheet = ensure_worksheet("Audit Log", audit_headers)
 
-# Load sheet into DataFrame
 def load_sheet(sheet, headers):
     try:
         records = sheet.get_all_records()
@@ -93,6 +92,23 @@ with st.sidebar:
             append_row(audit_sheet, [str(datetime.datetime.now()), user, "Add Item", item_id, f"{qty_total} added as {item_type}"])
             st.success("Item added and logged to Google Sheet!")
 
+# Verification section
+st.sidebar.header("✅ Verify Inventory Item")
+with st.sidebar.form("verify_form"):
+    verifier = st.text_input("Your Name (Verify)")
+    verify_item_ids = inventory["Item ID"].dropna().astype(str).unique().tolist()
+    verify_item_id = st.selectbox("Select Item ID to Verify", verify_item_ids if verify_item_ids else ["No items available"])
+    verify_comment = st.text_input("Verification Notes (optional)")
+    verify_submit = st.form_submit_button("Verify")
+    if verify_submit and verifier and verify_item_id != "No items available":
+        row_idx = inventory.index[inventory["Item ID"].astype(str) == verify_item_id][0] + 2
+        today_str = str(datetime.date.today())
+        inventory_sheet.update(f"O{row_idx}", [[verifier]])
+        inventory_sheet.update(f"P{row_idx}", [[today_str]])
+        append_row(audit_sheet, [str(datetime.datetime.now()), verifier, "Verify", verify_item_id, verify_comment])
+        inventory = load_sheet(inventory_sheet, inventory_headers)
+        st.success(f"Verified item {verify_item_id}")
+
 # Check-in/out section
 st.sidebar.header("🔄 Check In/Out")
 with st.sidebar.form("checkout_form"):
@@ -116,7 +132,7 @@ with st.sidebar.form("checkout_form"):
         else:
             inventory_sheet.update(f"G{row_idx}", [["In Stock"]])
             inventory_sheet.update(f"L{row_idx}", [[str(date_now)]])
-            inventory_sheet.update(f"R{row_idx}", [[""]])  # clear checkout location
+            inventory_sheet.update(f"R{row_idx}", [[""]])
         append_row(audit_sheet, [str(datetime.datetime.now()), user, action, item_id, f"{comment} → {checkout_location}"])
         inventory = load_sheet(inventory_sheet, inventory_headers)
         st.success(f"{action} successful for item {item_id}")
