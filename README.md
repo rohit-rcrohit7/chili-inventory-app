@@ -1,6 +1,6 @@
-# CHILI Inventory Manager (Streamlit + Google Sheets)
+# CHILI Inventory Manager 
 
-This Streamlit app provides a real-time, collaborative inventory tracking system for CHILI air quality research equipment. It integrates directly with Google Sheets for persistent storage, audit logging, and multi-user access.
+This app provides a real-time, collaborative inventory tracking system for CHILI air quality research equipment. It integrates directly with Google Sheets for persistent storage, audit logging, and multi-user access.
 
 ---
 
@@ -13,7 +13,7 @@ This Streamlit app provides a real-time, collaborative inventory tracking system
 - 📒 Full audit log of all actions
 - 📈 Live charts and filterable summary table
 - 📤 Downloadable inventory and audit log CSVs
-- 🔁 **Instant updates** from Google Sheets – no manual refresh needed
+- 🔁 **Instant updates**
 
 ---
 
