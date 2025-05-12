@@ -90,6 +90,7 @@ with st.sidebar:
             append_row(inventory_sheet, new_row)
             inventory = load_sheet(inventory_sheet, inventory_headers)
             append_row(audit_sheet, [str(datetime.datetime.now()), user, "Add Item", item_id, f"{qty_total} added as {item_type}"])
+            audit_log = load_sheet(audit_sheet, audit_headers)
             st.success("Item added and logged to Google Sheet!")
 
 # Verification section
@@ -106,6 +107,7 @@ with st.sidebar.form("verify_form"):
         inventory_sheet.update(f"O{row_idx}", [[verifier]])
         inventory_sheet.update(f"P{row_idx}", [[today_str]])
         append_row(audit_sheet, [str(datetime.datetime.now()), verifier, "Verify", verify_item_id, verify_comment])
+        audit_log = load_sheet(audit_sheet, audit_headers)
         inventory = load_sheet(inventory_sheet, inventory_headers)
         st.success(f"Verified item {verify_item_id}")
 
@@ -134,6 +136,7 @@ with st.sidebar.form("checkout_form"):
             inventory_sheet.update(f"L{row_idx}", [[str(date_now)]])
             inventory_sheet.update(f"R{row_idx}", [[""]])
         append_row(audit_sheet, [str(datetime.datetime.now()), user, action, item_id, f"{comment} → {checkout_location}"])
+        audit_log = load_sheet(audit_sheet, audit_headers)
         inventory = load_sheet(inventory_sheet, inventory_headers)
         st.success(f"{action} successful for item {item_id}")
 
